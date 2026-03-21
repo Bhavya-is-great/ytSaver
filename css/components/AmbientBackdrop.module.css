@@ -1,0 +1,54 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #060606;
+}
+
+.mesh {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 5rem 5rem;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.96), transparent 84%);
+  opacity: 0.14;
+}
+
+.blobOne,
+.blobTwo,
+.blobThree {
+  position: absolute;
+  filter: blur(52px);
+}
+
+.blobOne {
+  top: 10%;
+  left: 14%;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 44, 44, 0.22), transparent 70%);
+}
+
+.blobTwo {
+  top: 24%;
+  right: 10%;
+  width: 20rem;
+  height: 20rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(172, 17, 25, 0.2), transparent 72%);
+}
+
+.blobThree {
+  bottom: 8%;
+  left: 50%;
+  width: 28rem;
+  height: 12rem;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.04), transparent 68%);
+}

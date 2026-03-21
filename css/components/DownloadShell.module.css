@@ -1,0 +1,55 @@
+.shell {
+  width: min(1180px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 0 0 4rem;
+}
+
+.heroSection {
+  min-height: calc(100svh - 5rem);
+  display: flex;
+  align-items: center;
+}
+
+.heroGrid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.15rem;
+}
+
+.featureSection {
+  padding: 1rem 0 2rem;
+}
+
+.sectionHeader {
+  max-width: 48rem;
+  margin-bottom: 1.4rem;
+}
+
+.kicker {
+  display: inline-flex;
+  margin-bottom: 0.9rem;
+  color: rgba(255, 105, 105, 0.74);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+}
+
+.sectionHeader h2 {
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+@media (max-width: 980px) {
+  .heroSection {
+    min-height: auto;
+    padding: 2rem 0 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 1rem, 1180px);
+  }
+}

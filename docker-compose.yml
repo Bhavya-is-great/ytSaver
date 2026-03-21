@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      YTDLP_PATH: /app/node_modules/yt-dlp-exec/bin/yt-dlp
+      FFMPEG_PATH: /usr/bin/ffmpeg
+    restart: unless-stopped
