@@ -13,9 +13,10 @@ The app listens on `http://localhost:3000`.
 
 ## Required runtime assumptions
 
-- `yt-dlp` must be available either through `YTDLP_PATH`, the system `PATH`, or `node_modules/yt-dlp-exec/bin`.
-- `ffmpeg` must be available through `FFMPEG_PATH` or the system `PATH` if you want merged video+audio downloads.
-- Cookie files are intentionally excluded from Docker builds. Mount them into the container or provide your own runtime secret strategy if restricted videos require them.
+- `yt-dlp` is resolved from `YTDLP_PATH`, the system `PATH`, or `node_modules/yt-dlp-exec/bin`.
+- `ffmpeg` is resolved from `FFMPEG_PATH`, the system `PATH`, `@ffmpeg-installer/ffmpeg`, or common WinGet locations.
+- Restricted videos require cookies. Provide them through `YTDLP_COOKIES_PATH`, `YTDLP_COOKIES_CONTENT`, `YTDLP_COOKIES_BASE64`, or a local `cookies.txt`.
+- Root-level `yt-dlp.exe` and `ffmpeg.exe` are optional overrides, not hard requirements for a fresh machine.
 
 ## Docker
 

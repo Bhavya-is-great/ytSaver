@@ -38,6 +38,40 @@ function resolveFromPath(binaryName) {
   return null;
 }
 
+function resolvePackagedBinary() {
+  const packagesDir = path.join(/* turbopackIgnore: true */ process.cwd(), "node_modules", "@ffmpeg-installer");
+  const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+
+  if (!fs.existsSync(packagesDir)) {
+    return null;
+  }
+
+  const packageNames = fs.readdirSync(packagesDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${process.platform}-`))
+    .map((entry) => entry.name)
+    .sort((left, right) => {
+      if (left === `${process.platform}-${process.arch}`) {
+        return -1;
+      }
+
+      if (right === `${process.platform}-${process.arch}`) {
+        return 1;
+      }
+
+      return left.localeCompare(right);
+    });
+
+  for (const packageName of packageNames) {
+    const candidate = path.join(packagesDir, packageName, binaryName);
+
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function walkForBinary(startDir, targetName, depth = 5) {
   if (!startDir || !fs.existsSync(startDir) || depth < 0) {
     return null;
@@ -78,6 +112,12 @@ function resolveFfmpegPath() {
 
   if (pathBinary) {
     return pathBinary;
+  }
+
+  const packagedBinary = resolvePackagedBinary();
+
+  if (packagedBinary) {
+    return packagedBinary;
   }
 
   const packagesRoot = process.env.LOCALAPPDATA

@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { ExpressError } from "@/utils/expressError";
 import { logError, logInfo } from "@/utils/logger";
 import { ffmpegPath } from "@/utils/ffmpeg-path";
-import { ytDlp } from "@/utils/ytdlp";
+import { ytDlp, withYtDlpRuntimeFlags } from "@/utils/ytdlp";
 
 function sanitizeFilename(filename) {
   return filename.replace(/[\\/:*?"<>|]/g, "_");
@@ -61,14 +61,14 @@ async function cleanupTempDir(tempDir) {
 async function resolveYtDlpFormat(sourceUrl, formatId) {
   const info = await ytDlp(
     sourceUrl,
-    {
+    withYtDlpRuntimeFlags({
       dumpSingleJson: true,
       skipDownload: true,
       noWarnings: true,
       noPlaylist: true,
       quiet: true,
       format: formatId,
-    },
+    }),
     {
       timeout: 30000,
       windowsHide: true,
@@ -112,7 +112,7 @@ async function downloadWithYtDlpToTemp(sourceUrl, formatId, filename) {
   try {
     await ytDlp.exec(
       sourceUrl,
-      {
+      withYtDlpRuntimeFlags({
         format: formatId,
         output: outputTemplate,
         noWarnings: true,
@@ -121,7 +121,7 @@ async function downloadWithYtDlpToTemp(sourceUrl, formatId, filename) {
         noPart: true,
         ffmpegLocation: ffmpegPath || undefined,
         mergeOutputFormat: shouldMerge ? "mp4" : undefined,
-      },
+      }),
       {
         windowsHide: true,
       }
@@ -303,3 +303,5 @@ export async function proxyController(request) {
     throw new ExpressError("Failed to fetch the media stream.", 502);
   }
 }
+
+

@@ -2,7 +2,7 @@ import { APP_CONFIG } from "@/configs/app.config";
 import { createSuccessResponse } from "@/utils/api-response";
 import { ExpressError } from "@/utils/expressError";
 import { logError, logInfo, logWarn } from "@/utils/logger";
-import { ytDlp, getYtDlpBinaryPath } from "@/utils/ytdlp";
+import { ytDlp, getYtDlpBinaryPath, getYtDlpCookiesPath, withYtDlpRuntimeFlags } from "@/utils/ytdlp";
 
 const { Innertube } = await import("youtubei.js");
 const { getQuickJS } = await import("quickjs-emscripten");
@@ -381,17 +381,18 @@ async function fetchWithYtDlp(url, videoId) {
     videoId,
     url,
     binaryPath: getYtDlpBinaryPath(),
+    cookiesPath: getYtDlpCookiesPath(),
   });
 
   const info = await ytDlp(
     url,
-    {
+    withYtDlpRuntimeFlags({
       dumpSingleJson: true,
       skipDownload: true,
       noWarnings: true,
       noPlaylist: true,
       quiet: true,
-    },
+    }),
     {
       timeout: 30000,
       windowsHide: true,
@@ -643,5 +644,7 @@ export async function downloadController(request) {
     throw normalizeYoutubeError(ytDlpError || youtubeiError);
   }
 }
+
+
 
 
