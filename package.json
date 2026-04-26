@@ -13,7 +13,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "geist": "^1.7.0",
     "gsap": "^3.14.2",
-    "next": "16.2.1",
+    "next": "^16.2.4",
     "quickjs-emscripten": "^0.32.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -22,6 +22,9 @@
   },
   "devDependencies": {
     "eslint": "^9",
-    "eslint-config-next": "16.2.1"
+    "eslint-config-next": "^16.2.4"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
   }
 }
