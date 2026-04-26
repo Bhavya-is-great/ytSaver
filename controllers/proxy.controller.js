@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import os from "node:os";
@@ -8,6 +9,9 @@ import { ExpressError } from "@/utils/expressError";
 import { logError, logInfo } from "@/utils/logger";
 import { ffmpegPath } from "@/utils/ffmpeg-path";
 import { ytDlp, withYtDlpRuntimeFlags } from "@/utils/ytdlp";
+
+const DOWNLOAD_CACHE_ROOT = path.join(os.tmpdir(), "ytsaver-download-cache");
+const DOWNLOAD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function sanitizeFilename(filename) {
   return filename.replace(/[\\/:*?"<>|]/g, "_");
@@ -58,6 +62,85 @@ async function cleanupTempDir(tempDir) {
   await fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => null);
 }
 
+function buildCacheKey(sourceUrl, formatId) {
+  return crypto.createHash("sha1").update(`${sourceUrl}::${formatId}`).digest("hex");
+}
+
+async function ensureCacheRoot() {
+  await fsPromises.mkdir(DOWNLOAD_CACHE_ROOT, { recursive: true });
+}
+
+async function pruneDownloadCache() {
+  await ensureCacheRoot();
+
+  const entries = await fsPromises.readdir(DOWNLOAD_CACHE_ROOT, { withFileTypes: true }).catch(() => []);
+  const cutoff = Date.now() - DOWNLOAD_CACHE_TTL_MS;
+
+  await Promise.all(entries.map(async (entry) => {
+    if (!entry.isDirectory()) {
+      return;
+    }
+
+    const fullPath = path.join(DOWNLOAD_CACHE_ROOT, entry.name);
+    const stats = await fsPromises.stat(fullPath).catch(() => null);
+
+    if (stats && stats.mtimeMs < cutoff) {
+      await cleanupTempDir(fullPath);
+    }
+  }));
+}
+
+async function findCompletedDownload(cacheDir) {
+  const files = await fsPromises.readdir(cacheDir).catch(() => []);
+  const downloadedFile = files.find((file) => !file.endsWith(".part") && !file.endsWith(".ytdl"));
+
+  return downloadedFile ? path.join(cacheDir, downloadedFile) : null;
+}
+
+function parseRangeHeader(rangeHeader, fileSize) {
+  if (!rangeHeader) {
+    return null;
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+
+  if (!match) {
+    return { invalid: true };
+  }
+
+  const [, startText, endText] = match;
+
+  if (!startText && !endText) {
+    return { invalid: true };
+  }
+
+  let start = 0;
+  let end = fileSize - 1;
+
+  if (!startText) {
+    const suffixLength = Number(endText);
+
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0) {
+      return { invalid: true };
+    }
+
+    start = Math.max(fileSize - suffixLength, 0);
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : fileSize - 1;
+
+    if (!Number.isInteger(start) || !Number.isInteger(end)) {
+      return { invalid: true };
+    }
+  }
+
+  if (start < 0 || end < start || start >= fileSize || end >= fileSize) {
+    return { invalid: true };
+  }
+
+  return { start, end };
+}
+
 async function resolveYtDlpFormat(sourceUrl, formatId) {
   const info = await ytDlp(
     sourceUrl,
@@ -92,21 +175,38 @@ async function resolveYtDlpFormat(sourceUrl, formatId) {
   };
 }
 
-async function downloadWithYtDlpToTemp(sourceUrl, formatId, filename) {
+async function downloadWithYtDlpToCache(sourceUrl, formatId, filename) {
   if (!ffmpegPath && String(formatId).includes("+")) {
     throw new ExpressError("FFmpeg is not available, so merged video+audio downloads cannot be created yet.", 503);
   }
 
-  const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), "ytsaver-"));
-  const parsedName = path.parse(filename);
-  const outputTemplate = path.join(tempDir, `${parsedName.name}.%(ext)s`);
+  await pruneDownloadCache();
+
+  const cacheDir = path.join(DOWNLOAD_CACHE_ROOT, buildCacheKey(sourceUrl, formatId));
   const shouldMerge = String(formatId).includes("+");
+  const cachedFile = await findCompletedDownload(cacheDir);
+
+  if (cachedFile) {
+    const stats = await fsPromises.stat(cachedFile);
+
+    return {
+      filePath: cachedFile,
+      contentType: inferContentType(cachedFile),
+      contentLength: String(stats.size),
+    };
+  }
+
+  await fsPromises.mkdir(cacheDir, { recursive: true });
+
+  const parsedName = path.parse(filename);
+  const outputTemplate = path.join(cacheDir, `${parsedName.name || "download"}.%(ext)s`);
 
   logInfo("[PROXY] Starting yt-dlp download", {
     sourceUrl,
     formatId,
     shouldMerge,
     ffmpegPath,
+    cacheDir,
   });
 
   try {
@@ -118,7 +218,7 @@ async function downloadWithYtDlpToTemp(sourceUrl, formatId, filename) {
         noWarnings: true,
         noPlaylist: true,
         quiet: true,
-        noPart: true,
+        continue: true,
         ffmpegLocation: ffmpegPath || undefined,
         mergeOutputFormat: shouldMerge ? "mp4" : undefined,
       }),
@@ -127,24 +227,23 @@ async function downloadWithYtDlpToTemp(sourceUrl, formatId, filename) {
       }
     );
 
-    const files = await fsPromises.readdir(tempDir);
-    const downloadedFile = files.find((file) => !file.endsWith(".part") && !file.endsWith(".ytdl"));
+    const downloadedFile = await findCompletedDownload(cacheDir);
 
     if (!downloadedFile) {
       throw new ExpressError("The media file was not created after download.", 500);
     }
 
-    const filePath = path.join(tempDir, downloadedFile);
-    const stats = await fsPromises.stat(filePath);
+    const stats = await fsPromises.stat(downloadedFile);
 
     return {
-      filePath,
-      tempDir,
-      contentType: inferContentType(filePath),
+      filePath: downloadedFile,
+      contentType: inferContentType(downloadedFile),
       contentLength: String(stats.size),
     };
   } catch (error) {
-    await cleanupTempDir(tempDir);
+    if (!(await findCompletedDownload(cacheDir))) {
+      await cleanupTempDir(cacheDir);
+    }
 
     if (error instanceof ExpressError) {
       throw error;
@@ -223,21 +322,44 @@ async function proxyResolvedYtDlpStream(sourceUrl, formatId, filename, request) 
   });
 }
 
-async function proxyMergedYtDlpMedia(sourceUrl, formatId, filename) {
-  const { filePath, tempDir, contentType, contentLength } = await downloadWithYtDlpToTemp(sourceUrl, formatId, filename);
-  const fileStream = fs.createReadStream(filePath);
+async function proxyCachedFile(filePath, filename, request) {
+  const stats = await fsPromises.stat(filePath);
+  const range = parseRangeHeader(request.headers.get("range"), stats.size);
 
-  const cleanup = () => {
-    void cleanupTempDir(tempDir);
-  };
+  if (range?.invalid) {
+    return new NextResponse(null, {
+      status: 416,
+      headers: buildDownloadHeaders(filename, inferContentType(filePath), "0", 416, `bytes */${stats.size}`),
+    });
+  }
 
-  fileStream.on("close", cleanup);
-  fileStream.on("error", cleanup);
+  if (!range) {
+    const fileStream = fs.createReadStream(filePath);
+
+    return new NextResponse(Readable.toWeb(fileStream), {
+      status: 200,
+      headers: buildDownloadHeaders(filename, inferContentType(filePath), String(stats.size)),
+    });
+  }
+
+  const chunkSize = range.end - range.start + 1;
+  const fileStream = fs.createReadStream(filePath, { start: range.start, end: range.end });
 
   return new NextResponse(Readable.toWeb(fileStream), {
-    status: 200,
-    headers: buildDownloadHeaders(path.basename(filePath), contentType, contentLength),
+    status: 206,
+    headers: buildDownloadHeaders(
+      filename,
+      inferContentType(filePath),
+      String(chunkSize),
+      206,
+      `bytes ${range.start}-${range.end}/${stats.size}`
+    ),
   });
+}
+
+async function proxyMergedYtDlpMedia(sourceUrl, formatId, filename, request) {
+  const { filePath } = await downloadWithYtDlpToCache(sourceUrl, formatId, filename);
+  return proxyCachedFile(filePath, path.basename(filePath), request);
 }
 
 export async function proxyController(request) {
@@ -250,7 +372,7 @@ export async function proxyController(request) {
   if (sourceUrl && formatId) {
     try {
       if (String(formatId).includes("+")) {
-        return await proxyMergedYtDlpMedia(sourceUrl, formatId, filename);
+        return await proxyMergedYtDlpMedia(sourceUrl, formatId, filename, request);
       }
 
       return await proxyResolvedYtDlpStream(sourceUrl, formatId, filename, request);
@@ -303,5 +425,3 @@ export async function proxyController(request) {
     throw new ExpressError("Failed to fetch the media stream.", 502);
   }
 }
-
-

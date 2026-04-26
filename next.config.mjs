@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  allowedDevOrigins: ["*.bhavyadhanwani.dev"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "i.ytimg.com" },
